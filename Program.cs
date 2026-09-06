@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Diagnostics;
+using System.IO;
 
 namespace KHALED_X;
 
@@ -174,16 +175,31 @@ public class Program {
         if (!valid.Contains(cmd)) { Console.WriteLine($"[ERROR] Unknown: {cmd}"); return (int)ExitCode.PolicyDenied; }
         try {
             var evPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KHALED-X", "evidence.jsonl");
-            var ev = new EvidenceKernel(evPath); var lc = new LifecycleEngine(ev); var ai = new AIAgentCompany();
+            var ev = new EvidenceKernel(evPath); 
+            var lc = new LifecycleEngine(ev); 
+            var ai = new AIAgentCompany();
             var ctx = new OperationContext { ProductId="KHALED-X", ProductVersion="5.0", ContractVersion="KHALED-27-FINAL", MachineIdHash=ComputeHash($"{Environment.MachineName}|{Environment.UserName}"), Actor=Environment.UserName, Authority="HUMAN", Mode=cmd };
-            ExitCode exit = cmd switch {
-                "review" => ai.ReviewComponent("Test", "public class T{}").Decision == AgentDecision.Approve ? ExitCode.Success : ExitCode.VerificationFailure,
-                "test" => (ai.RunTests(), ExitCode.Success).Item2,
-                "heal" => ai.Heal("F-001").State == HealingController.HealingState.HealingExhausted ? ExitCode.RecoveryUnverified : ExitCode.Success,
-                _ => await lc.ExecuteAsync(ctx)
-            };
-            Console.WriteLine($"\n[RESULT] Exit: {exit} ({(int)exit}) | Evidence: {ev.GetRecords().Count}"); return (int)exit;
-        } catch (Exception ex) { Console.WriteLine($"[CRITICAL] {ex.Message}"); return (int)ExitCode.InternalError; }
+            
+            ExitCode exitCode;
+            if (cmd == "test") {
+                ai.RunTests();
+                exitCode = ExitCode.Success;
+            } else if (cmd == "review") {
+                var dec = ai.ReviewComponent("Test", "public class T{}").Decision == AgentDecision.Approve ? ExitCode.Success : ExitCode.VerificationFailure;
+                exitCode = dec;
+            } else if (cmd == "heal") {
+                var s = ai.Heal("F-001");
+                exitCode = s.State == HealingController.HealingState.HealingExhausted ? ExitCode.RecoveryUnverified : ExitCode.Success;
+            } else {
+                exitCode = await lc.ExecuteAsync(ctx);
+            }
+
+            Console.WriteLine($"\n[RESULT] Exit: {exitCode} ({(int)exitCode}) | Evidence: {ev.GetRecords().Count}"); 
+            return (int)exitCode;
+        } catch (Exception ex) { 
+            Console.WriteLine($"[CRITICAL] {ex.Message}"); 
+            return (int)ExitCode.InternalError; 
+        }
     }
     private static void PrintUsage() => Console.WriteLine("Usage: goodbay220 <detect|status|verify|install|repair|upgrade|uninstall|diagnose|audit|review|test|heal>");
     private static string ComputeHash(string data) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(data)));
